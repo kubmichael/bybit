@@ -2,6 +2,8 @@ package bybit
 
 import (
 	"github.com/gorilla/websocket"
+	"net/http"
+	"time"
 )
 
 // V5WebsocketServiceI :
@@ -18,7 +20,8 @@ type V5WebsocketService struct {
 // Public :
 func (s *V5WebsocketService) Public(category CategoryV5) (V5WebsocketPublicServiceI, error) {
 	url := s.client.baseURL + V5WebsocketPublicPathFor(category)
-	c, _, err := websocket.DefaultDialer.Dial(url, nil)
+	dialer := &websocket.Dialer{Proxy: http.ProxyFromEnvironment, HandshakeTimeout: 45 * time.Second}
+	c, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +40,8 @@ func (s *V5WebsocketService) Public(category CategoryV5) (V5WebsocketPublicServi
 // Private :
 func (s *V5WebsocketService) Private() (V5WebsocketPrivateServiceI, error) {
 	url := s.client.baseURL + V5WebsocketPrivatePath
-	c, _, err := websocket.DefaultDialer.Dial(url, nil)
+	dialer := &websocket.Dialer{Proxy: http.ProxyFromEnvironment, HandshakeTimeout: 45 * time.Second}
+	c, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
