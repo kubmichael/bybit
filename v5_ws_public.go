@@ -25,6 +25,11 @@ type V5WebsocketPublicServiceI interface {
 		func(V5WebsocketPublicOrderBookResponse) error,
 	) (func() error, error)
 
+	SubscribeOrderBooks(
+		[]V5WebsocketPublicOrderBookParamKey,
+		func(V5WebsocketPublicOrderBookResponse) error,
+	) ([]func() error, error)
+
 	SubscribeKline(
 		V5WebsocketPublicKlineParamKey,
 		func(V5WebsocketPublicKlineResponse) error,
@@ -146,6 +151,11 @@ func (s *V5WebsocketPublicService) Start(ctx context.Context, errHandler ErrHand
 	go func() {
 		defer close(done)
 		defer s.connection.Close()
+		_ = s.connection.SetReadDeadline(time.Now().Add(60 * time.Second))
+		s.connection.SetPongHandler(func(string) error {
+			_ = s.connection.SetReadDeadline(time.Now().Add(60 * time.Second))
+			return nil
+		})
 
 		for {
 			if err := s.Run(); err != nil {
@@ -193,6 +203,8 @@ func (s *V5WebsocketPublicService) Run() error {
 	if err != nil {
 		return err
 	}
+
+	_ = s.connection.SetReadDeadline(time.Now().Add(60 * time.Second))
 
 	topic, err := s.judgeTopic(message)
 	if err != nil {
