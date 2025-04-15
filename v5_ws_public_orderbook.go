@@ -44,12 +44,62 @@ func (s *V5WebsocketPublicService) SubscribeOrderBook(
 		if err != nil {
 			return err
 		}
-		if err := s.writeMessage(websocket.TextMessage, []byte(buf)); err != nil {
+		if err := s.writeMessage(websocket.TextMessage, buf); err != nil {
 			return err
 		}
 		s.removeParamOrderBookFunc(key)
 		return nil
 	}, nil
+}
+
+func (s *V5WebsocketPublicService) SubscribeOrderBooks(
+	keys []V5WebsocketPublicOrderBookParamKey,
+	f func(V5WebsocketPublicOrderBookResponse) error,
+) ([]func() error, error) {
+	for _, key := range keys {
+		if err := s.addParamOrderBookFunc(key, f); err != nil {
+			return nil, err
+		}
+	}
+	var unsubscribes []func() error
+	var args []interface{}
+	for _, key := range keys {
+		unsubscribe := func() error {
+			param := struct {
+				Op   string        `json:"op"`
+				Args []interface{} `json:"args"`
+			}{
+				Op:   "unsubscribe",
+				Args: []interface{}{key.Topic()},
+			}
+			buf, err := json.Marshal(param)
+			if err != nil {
+				return err
+			}
+			if err := s.writeMessage(websocket.TextMessage, buf); err != nil {
+				return err
+			}
+			s.removeParamOrderBookFunc(key)
+			return nil
+		}
+		unsubscribes = append(unsubscribes, unsubscribe)
+		args = append(args, key.Topic())
+	}
+	param := struct {
+		Op   string        `json:"op"`
+		Args []interface{} `json:"args"`
+	}{
+		Op:   "subscribe",
+		Args: args,
+	}
+	buf, err := json.Marshal(param)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.writeMessage(websocket.TextMessage, buf); err != nil {
+		return nil, err
+	}
+	return unsubscribes, nil
 }
 
 // V5WebsocketPublicOrderBookParamKey :
@@ -88,7 +138,7 @@ type V5WebsocketPublicOrderBookBids []struct {
 
 // UnmarshalJSON :
 func (b *V5WebsocketPublicOrderBookBids) UnmarshalJSON(data []byte) error {
-	parsedData := [][]string{}
+	var parsedData [][]string
 	if err := json.Unmarshal(data, &parsedData); err != nil {
 		return err
 	}
@@ -113,7 +163,7 @@ type V5WebsocketPublicOrderBookAsks []struct {
 
 // UnmarshalJSON :
 func (b *V5WebsocketPublicOrderBookAsks) UnmarshalJSON(data []byte) error {
-	parsedData := [][]string{}
+	var parsedData [][]string
 	if err := json.Unmarshal(data, &parsedData); err != nil {
 		return err
 	}
@@ -150,6 +200,9 @@ func (r *V5WebsocketPublicOrderBookResponse) Key() V5WebsocketPublicOrderBookPar
 
 // addParamOrderBookFunc :
 func (s *V5WebsocketPublicService) addParamOrderBookFunc(key V5WebsocketPublicOrderBookParamKey, f func(V5WebsocketPublicOrderBookResponse) error) error {
+	if len(s.paramOrderBookMap) >= 10 {
+		return errors.New("too many subjects, supported up 10")
+	}
 	if _, exist := s.paramOrderBookMap[key]; exist {
 		return errors.New("already registered for this param")
 	}
